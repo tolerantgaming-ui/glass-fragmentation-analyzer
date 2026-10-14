@@ -1,17 +1,33 @@
-OpenCV.js (vendor) instructions
+## Build opencv.js
 
-The app requires a local copy of opencv.js to run fully offline.
+- see https://github.com/opencv/opencv/blob/4.x/platforms/js/README.md
+- also https://docs.opencv.org/4.7.0/d4/da1/tutorial_js_setup.html
 
-You can download a prebuilt OpenCV.js release from the official OpenCV docs site, for example:
+```sh
+cd ~/apps/emsdk
+./emsdk update
+./emsdk install 2.0.10
+./emsdk activate 2.0.10
+```
 
-https://docs.opencv.org/5.0.0/opencv.js
+- build
 
-To download automatically, run one of the included scripts from the project root:
+```sh
+source ~/apps/emsdk/emsdk_env.sh
+emcmake python ./platforms/js/build_js.py build_js --build_wasm
+```
 
-- Linux / macOS / WSL:
-  ./scripts/fetch-opencv.sh 5.0.0
+## Patch opencv.js
 
-- Windows (PowerShell):
-  .\scripts\fetch-opencv.ps1 -Version 5.0.0
+- To create a patch for the current version of opencv.js, run:
 
-After the script completes, vendor/opencv.js will be present and you can open index.html in a browser or serve the project with a simple static server.
+```
+git diff > temp.patch
+mv temp.patch dist/opencv.js.patch
+```
+
+- To apply the patch, run:
+
+```sh
+git apply dist/opencv.js.patch
+```
