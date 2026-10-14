@@ -1,3 +1,0 @@
-This file ensures the vendor directory is present in the repository so binaries (like opencv.js) can be committed.
-
-You can safely remove this file after you add vendor/opencv.js.
