@@ -1,24 +1,17 @@
-# Glass Fragmentation Analyzer
+OpenCV.js (vendor) instructions
 
-A browser-based, offline analysis tool for counting fragments in thermally toughened glass photographs.
+The app requires a local copy of opencv.js to run fully offline.
 
-## Features
-- Upload image from disk or drag-and-drop
-- Select and move a square ROI
-- Resize the ROI from corners with optional aspect-ratio lock
-- Calibration using two points and a known distance
-- Set ROI to 50 mm x 50 mm automatically or manually adjust it
-- Live preprocessing preview with OpenCV.js
-- Adaptive thresholding and Canny edge detection
-- Fragment labeling and colourized visualization
-- Counting by centroid, majority area, or full-fragment criteria
+You can download a prebuilt OpenCV.js release from the official OpenCV docs site, for example:
 
-## Usage
-1. Open `index.html` in a browser.
-2. Add an image.
-3. Calibrate the scale using two points and a known distance.
-4. Adjust the ROI and image-processing sliders.
-5. Run the fragment analysis and review counted fragments.
+https://docs.opencv.org/5.0.0/opencv.js
 
-## Offline dependency
-The app expects OpenCV.js in `vendor/opencv.js` for truly offline usage.
+To download automatically, run one of the included scripts from the project root:
+
+- Linux / macOS / WSL:
+  ./scripts/fetch-opencv.sh 5.0.0
+
+- Windows (PowerShell):
+  .\scripts\fetch-opencv.ps1 -Version 5.0.0
+
+After the script completes, vendor/opencv.js will be present and you can open index.html in a browser or serve the project with a simple static server.
