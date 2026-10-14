@@ -1,129 +1,742 @@
-<!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Glass Fragmentation Analyzer</title>
-    <link rel="stylesheet" href="./styles.css" />
-  </head>
-  <body>
-    <div class="app-shell">
-      <aside class="panel controls-panel">
-        <h1>Glass Fragment Analyzer</h1>
+const state = {
+  imageEl: null,
+  imageDataUrl: '',
+  roi: {
+    x: 120,
+    y: 120,
+    size: 220,
+    aspectLocked: true,
+    activeHandle: null,
+    dragging: false,
+    dragStartX: 0,
+    dragStartY: 0,
+    originalX: 0,
+    originalY: 0,
+    originalSize: 220
+  },
+  calibration: {
+    active: false,
+    points: [],
+    mmPerPixel: null,
+    knownDistanceMm: 50
+  },
+  settings: {
+    thresholdSensitivity: 24,
+    edgeSensitivity: 35,
+    contrastEnhancement: 2.5,
+    lowThreshold: 50,
+    highThreshold: 150,
+    countMode: 'centroid'
+  },
+  fragments: [],
+  previewReady: false,
+  cvReady: false
+};
 
-        <div class="section upload-panel">
-          <label class="file-picker" for="imageInput">
-            <input id="imageInput" type="file" accept="image/png,image/jpeg" />
-            <span>Upload image</span>
-          </label>
-          <div id="dropZone" class="drop-zone">Drag and drop image here</div>
-        </div>
+const elements = {};
 
-        <div class="section">
-          <h2>Calibration</h2>
-          <div class="row">
-            <label for="knownDistance">Known distance (mm)</label>
-            <input id="knownDistance" type="number" min="0.1" step="0.1" value="50" />
-          </div>
-          <div class="row actions-row">
-            <button id="startCalibrationBtn" type="button">Start calibration</button>
-            <button id="clearCalibrationBtn" type="button" class="secondary">Clear</button>
-          </div>
-          <div class="metrics-box">
-            <div><span>mm / px</span><strong id="mmPerPixelValue">—</strong></div>
-            <div><span>Scale factor</span><strong id="scaleFactorValue">—</strong></div>
-          </div>
-        </div>
+function ready() {
+  elements.imageInput = document.getElementById('imageInput');
+  elements.dropZone = document.getElementById('dropZone');
+  elements.startCalibrationBtn = document.getElementById('startCalibrationBtn');
+  elements.clearCalibrationBtn = document.getElementById('clearCalibrationBtn');
+  elements.imageCanvas = document.getElementById('imageCanvas');
+  elements.previewCanvas = document.getElementById('previewCanvas');
+  elements.knownDistance = document.getElementById('knownDistance');
+  elements.aspectLock = document.getElementById('aspectLock');
+  elements.roi50Btn = document.getElementById('roi50Btn');
+  elements.roiAutoBtn = document.getElementById('roiAutoBtn');
+  elements.processBtn = document.getElementById('processBtn');
+  elements.rerunAnalysisBtn = document.getElementById('rerunAnalysisBtn');
+  elements.countMode = document.getElementById('countMode');
+  elements.statusText = document.getElementById('statusText');
 
-        <div class="section">
-          <h2>ROI</h2>
-          <div class="metrics-box">
-            <div><span>Pixels</span><strong id="roiPixelsValue">—</strong></div>
-            <div><span>Millimetres</span><strong id="roiMmValue">—</strong></div>
-          </div>
-          <div class="row checkbox-row">
-            <label><input id="aspectLock" type="checkbox" checked /> Lock 1:1 aspect ratio</label>
-          </div>
-          <div class="row actions-row">
-            <button id="roi50Btn" type="button">Set 50 mm ROI</button>
-            <button id="roiAutoBtn" type="button" class="secondary">Center ROI</button>
-          </div>
-        </div>
+  elements.thresholdSensitivity = document.getElementById('thresholdSensitivity');
+  elements.edgeSensitivity = document.getElementById('edgeSensitivity');
+  elements.contrastEnhancement = document.getElementById('contrastEnhancement');
+  elements.lowThreshold = document.getElementById('lowThreshold');
+  elements.highThreshold = document.getElementById('highThreshold');
 
-        <div class="section">
-          <h2>Preprocessing</h2>
-          <div class="slider-group">
-            <label for="thresholdSensitivity">Threshold sensitivity</label>
-            <input id="thresholdSensitivity" type="range" min="1" max="80" value="24" />
-            <output id="thresholdSensitivityValue">24</output>
-          </div>
+  elements.thresholdSensitivityValue = document.getElementById('thresholdSensitivityValue');
+  elements.edgeSensitivityValue = document.getElementById('edgeSensitivityValue');
+  elements.contrastEnhancementValue = document.getElementById('contrastEnhancementValue');
+  elements.lowThresholdValue = document.getElementById('lowThresholdValue');
+  elements.highThresholdValue = document.getElementById('highThresholdValue');
 
-          <div class="slider-group">
-            <label for="edgeSensitivity">Edge sensitivity</label>
-            <input id="edgeSensitivity" type="range" min="1" max="80" value="35" />
-            <output id="edgeSensitivityValue">35</output>
-          </div>
+  elements.mmPerPixelValue = document.getElementById('mmPerPixelValue');
+  elements.scaleFactorValue = document.getElementById('scaleFactorValue');
+  elements.roiPixelsValue = document.getElementById('roiPixelsValue');
+  elements.roiMmValue = document.getElementById('roiMmValue');
+  elements.fragmentCountValue = document.getElementById('fragmentCountValue');
 
-          <div class="slider-group">
-            <label for="contrastEnhancement">Contrast enhancement</label>
-            <input id="contrastEnhancement" type="range" min="1" max="5" step="0.5" value="2.5" />
-            <output id="contrastEnhancementValue">2.5</output>
-          </div>
-        </div>
+  bindEvents();
+  updateControlOutputs();
+  state.settings.countMode = elements.countMode.value;
+  setStatus('Ready. Add an image to begin.');
+  checkOpenCV();
+}
 
-        <div class="section">
-          <h2>Edge detection</h2>
-          <div class="slider-group">
-            <label for="lowThreshold">Low threshold</label>
-            <input id="lowThreshold" type="range" min="10" max="200" value="50" />
-            <output id="lowThresholdValue">50</output>
-          </div>
+function bindEvents() {
+  elements.imageInput.addEventListener('change', (event) => {
+    const file = event.target.files && event.target.files[0];
+    if (file) loadImageFile(file);
+  });
 
-          <div class="slider-group">
-            <label for="highThreshold">High threshold</label>
-            <input id="highThreshold" type="range" min="50" max="400" value="150" />
-            <output id="highThresholdValue">150</output>
-          </div>
-        </div>
+  ['dragenter', 'dragover'].forEach((type) => {
+    elements.dropZone.addEventListener(type, (event) => {
+      event.preventDefault();
+      elements.dropZone.classList.add('dragover');
+    });
+  });
 
-        <div class="section">
-          <h2>Counting</h2>
-          <div class="row">
-            <label for="countMode">Mode</label>
-            <select id="countMode">
-              <option value="centroid">Centroid Count</option>
-              <option value="majority">Majority Area</option>
-              <option value="full">Full Fragment</option>
-            </select>
-          </div>
-          <div class="count-box">
-            <span>Fragments counted</span>
-            <strong id="fragmentCountValue">0</strong>
-          </div>
-        </div>
-      </aside>
+  ['dragleave', 'drop'].forEach((type) => {
+    elements.dropZone.addEventListener(type, (event) => {
+      event.preventDefault();
+      elements.dropZone.classList.remove('dragover');
+    });
+  });
 
-      <main class="workspace">
-        <div class="canvas-toolbar">
-          <button id="processBtn" type="button">Update preview</button>
-          <button id="rerunAnalysisBtn" type="button" class="secondary">Recount</button>
-          <span id="statusText" class="status-text">Waiting for image</span>
-        </div>
+  elements.dropZone.addEventListener('drop', (event) => {
+    const file = event.dataTransfer && event.dataTransfer.files[0];
+    if (file) loadImageFile(file);
+  });
 
-        <div class="canvas-grid">
-          <div class="canvas-card">
-            <h3>Source + ROI</h3>
-            <canvas id="imageCanvas" width="900" height="700"></canvas>
-          </div>
-          <div class="canvas-card">
-            <h3>Preprocessed preview</h3>
-            <canvas id="previewCanvas" width="900" height="700"></canvas>
-          </div>
-        </div>
-      </main>
-    </div>
+  elements.startCalibrationBtn.addEventListener('click', () => {
+    state.calibration.active = !state.calibration.active;
+    state.calibration.points = [];
+    setStatus(state.calibration.active ? 'Calibration mode: click two points on the image.' : 'Calibration cancelled.');
+    renderImageCanvas();
+  });
 
-    <script src="./vendor/opencv.js"></script>
-    <script src="./app.js"></script>
-  </body>
-</html>
+  elements.clearCalibrationBtn.addEventListener('click', () => {
+    state.calibration.points = [];
+    state.calibration.mmPerPixel = null;
+    setStatus('Calibration reset.');
+    updateMetrics();
+    renderImageCanvas();
+  });
+
+  elements.knownDistance.addEventListener('input', () => {
+    state.calibration.knownDistanceMm = Number(elements.knownDistance.value) || 0;
+    if (state.calibration.points.length === 2) computeCalibrationFromPoints();
+    updateMetrics();
+  });
+
+  elements.aspectLock.addEventListener('change', () => {
+    state.roi.aspectLocked = elements.aspectLock.checked;
+  });
+
+  elements.roi50Btn.addEventListener('click', () => {
+    if (!state.imageEl) {
+      setStatus('Load an image first.');
+      return;
+    }
+    apply50mmROI();
+  });
+
+  elements.roiAutoBtn.addEventListener('click', () => {
+    if (!state.imageEl) {
+      setStatus('Load an image first.');
+      return;
+    }
+    const width = state.imageEl.width;
+    const height = state.imageEl.height;
+    const size = Math.min(width, height) * 0.5;
+    state.roi.x = (width - size) * 0.5;
+    state.roi.y = (height - size) * 0.5;
+    state.roi.size = size;
+    renderImageCanvas();
+    updateMetrics();
+  });
+
+  elements.processBtn.addEventListener('click', () => processImagePipeline());
+  elements.rerunAnalysisBtn.addEventListener('click', () => processImagePipeline(true));
+
+  [
+    elements.thresholdSensitivity,
+    elements.edgeSensitivity,
+    elements.contrastEnhancement,
+    elements.lowThreshold,
+    elements.highThreshold
+  ].forEach((input) => {
+    input.addEventListener('input', () => {
+      syncSettingsFromInputs();
+      updateControlOutputs();
+      if (state.imageEl && state.cvReady) processImagePipeline();
+    });
+  });
+
+  elements.countMode.addEventListener('change', () => {
+    state.settings.countMode = elements.countMode.value;
+    recountFragments();
+  });
+
+  elements.imageCanvas.addEventListener('pointerdown', onCanvasPointerDown);
+  elements.imageCanvas.addEventListener('pointermove', onCanvasPointerMove);
+  elements.imageCanvas.addEventListener('pointerup', onCanvasPointerUp);
+  elements.imageCanvas.addEventListener('pointerleave', onCanvasPointerUp);
+  elements.imageCanvas.addEventListener('click', onCanvasClickForCalibration);
+}
+
+function syncSettingsFromInputs() {
+  state.settings.thresholdSensitivity = Number(elements.thresholdSensitivity.value);
+  state.settings.edgeSensitivity = Number(elements.edgeSensitivity.value);
+  state.settings.contrastEnhancement = Number(elements.contrastEnhancement.value);
+  state.settings.lowThreshold = Number(elements.lowThreshold.value);
+  state.settings.highThreshold = Number(elements.highThreshold.value);
+  state.settings.countMode = elements.countMode.value;
+}
+
+function updateControlOutputs() {
+  elements.thresholdSensitivityValue.textContent = String(elements.thresholdSensitivity.value);
+  elements.edgeSensitivityValue.textContent = String(elements.edgeSensitivity.value);
+  elements.contrastEnhancementValue.textContent = Number(elements.contrastEnhancement.value).toFixed(1);
+  elements.lowThresholdValue.textContent = String(elements.lowThreshold.value);
+  elements.highThresholdValue.textContent = String(elements.highThreshold.value);
+}
+
+function setStatus(message) {
+  elements.statusText.textContent = message;
+}
+
+function checkOpenCV() {
+  if (window.cv && window.cv.Mat) {
+    state.cvReady = true;
+    setStatus('OpenCV loaded. Ready for image processing.');
+    return true;
+  }
+
+  setStatus('OpenCV.js was not detected. Place opencv.js in vendor/opencv.js to enable analysis.');
+  return false;
+}
+
+function loadImageFile(file) {
+  if (!file || !file.type.startsWith('image/')) {
+    setStatus('Please select a PNG or JPEG image.');
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = (event) => {
+    const dataUrl = event.target.result;
+    const img = new Image();
+    img.onload = () => {
+      state.imageEl = img;
+      state.imageDataUrl = dataUrl;
+      state.roi.x = 60;
+      state.roi.y = 60;
+      state.roi.size = Math.min(img.width, img.height) * 0.5;
+      state.calibration.points = [];
+      state.calibration.mmPerPixel = null;
+      state.fragments = [];
+      elements.imageCanvas.width = img.width;
+      elements.imageCanvas.height = img.height;
+      elements.previewCanvas.width = img.width;
+      elements.previewCanvas.height = img.height;
+      renderImageCanvas();
+      if (state.cvReady) processImagePipeline();
+    };
+    img.src = dataUrl;
+  };
+  reader.readAsDataURL(file);
+}
+
+function getCanvasPoint(event) {
+  const rect = elements.imageCanvas.getBoundingClientRect();
+  const scaleX = elements.imageCanvas.width / rect.width;
+  const scaleY = elements.imageCanvas.height / rect.height;
+  return {
+    x: (event.clientX - rect.left) * scaleX,
+    y: (event.clientY - rect.top) * scaleY
+  };
+}
+
+function renderImageCanvas() {
+  const ctx = elements.imageCanvas.getContext('2d');
+  ctx.clearRect(0, 0, elements.imageCanvas.width, elements.imageCanvas.height);
+
+  if (!state.imageEl) {
+    ctx.fillStyle = '#0a1826';
+    ctx.fillRect(0, 0, elements.imageCanvas.width, elements.imageCanvas.height);
+    return;
+  }
+
+  ctx.drawImage(state.imageEl, 0, 0, elements.imageCanvas.width, elements.imageCanvas.height);
+  drawCalibrationMarkers(ctx);
+  drawROI(ctx);
+  drawFragmentOverlay(ctx);
+}
+
+function drawCalibrationMarkers(ctx) {
+  if (!state.calibration.points.length) return;
+
+  state.calibration.points.forEach((point, index) => {
+    ctx.beginPath();
+    ctx.arc(point.x, point.y, 6, 0, Math.PI * 2);
+    ctx.fillStyle = index === 0 ? '#66d9ef' : '#ffe66d';
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = '#ffffff';
+    ctx.stroke();
+  });
+
+  if (state.calibration.points.length === 2) {
+    const a = state.calibration.points[0];
+    const b = state.calibration.points[1];
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(b.x, b.y);
+    ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+    ctx.setLineDash([6, 6]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+}
+
+function drawROI(ctx) {
+  if (!state.imageEl) return;
+
+  const roi = state.roi;
+  const x = roi.x;
+  const y = roi.y;
+  const size = roi.size;
+
+  ctx.save();
+  ctx.strokeStyle = '#66d9ef';
+  ctx.lineWidth = 2;
+  ctx.setLineDash([10, 6]);
+  ctx.strokeRect(x, y, size, size);
+  ctx.setLineDash([]);
+
+  const handleSize = 10;
+  const handles = [
+    [x, y],
+    [x + size, y],
+    [x, y + size],
+    [x + size, y + size]
+  ];
+
+  handles.forEach(([hx, hy]) => {
+    ctx.fillStyle = '#ffcf5a';
+    ctx.fillRect(hx - handleSize / 2, hy - handleSize / 2, handleSize, handleSize);
+  });
+
+  ctx.font = '14px sans-serif';
+  ctx.fillStyle = '#ffffff';
+  ctx.fillText(`${Math.round(size)} px`, x + 8, y - 8);
+  ctx.restore();
+}
+
+function drawFragmentOverlay(ctx) {
+  if (!state.fragments.length) return;
+
+  state.fragments.forEach((fragment, idx) => {
+    const color = fragment.enabled ? getPaletteColor(idx) : 'rgba(255,255,255,0.18)';
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(fragment.x, fragment.y, fragment.w, fragment.h);
+    ctx.fillStyle = color;
+    ctx.font = '12px sans-serif';
+    ctx.fillText(String(fragment.label), fragment.x + 6, fragment.y + 14);
+    ctx.restore();
+  });
+}
+
+function getPaletteColor(index) {
+  const palette = ['#8ee3a0', '#7ad5ff', '#f7d779', '#d7b3ff', '#ff9e9e', '#94f2d9', '#f5a6ff', '#ffd166'];
+  return palette[index % palette.length];
+}
+
+function onCanvasClickForCalibration(event) {
+  if (!state.calibration.active) return;
+
+  const point = getCanvasPoint(event);
+  state.calibration.points.push(point);
+
+  if (state.calibration.points.length > 2) state.calibration.points = state.calibration.points.slice(-2);
+
+  if (state.calibration.points.length === 2) {
+    computeCalibrationFromPoints();
+    state.calibration.active = false;
+    setStatus('Calibration complete.');
+  } else {
+    setStatus('Calibration point 1 selected. Click the second point.');
+  }
+
+  renderImageCanvas();
+  updateMetrics();
+}
+
+function computeCalibrationFromPoints() {
+  const [p1, p2] = state.calibration.points;
+  const distancePx = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+  if (distancePx <= 0) {
+    state.calibration.mmPerPixel = null;
+    return;
+  }
+
+  const distanceMm = Number(elements.knownDistance.value) || state.calibration.knownDistanceMm || 1;
+  state.calibration.knownDistanceMm = distanceMm;
+  state.calibration.mmPerPixel = distanceMm / distancePx;
+}
+
+function updateMetrics() {
+  const roiPx = Math.round(state.roi.size);
+  const mmPerPixel = state.calibration.mmPerPixel;
+  const roiMm = mmPerPixel ? (roiPx * mmPerPixel).toFixed(2) : '—';
+
+  elements.roiPixelsValue.textContent = `${roiPx}px`;
+  elements.roiMmValue.textContent = mmPerPixel ? `${roiMm} mm` : '—';
+
+  if (mmPerPixel) {
+    elements.mmPerPixelValue.textContent = `${mmPerPixel.toFixed(4)} mm/px`;
+    elements.scaleFactorValue.textContent = `${(1 / mmPerPixel).toFixed(2)} px/mm`;
+  } else {
+    elements.mmPerPixelValue.textContent = '—';
+    elements.scaleFactorValue.textContent = '—';
+  }
+
+  elements.fragmentCountValue.textContent = String(state.fragments.length);
+}
+
+function apply50mmROI() {
+  const mmPerPixel = state.calibration.mmPerPixel;
+  if (!mmPerPixel) {
+    setStatus('Calibration required before applying a 50 mm ROI.');
+    return;
+  }
+
+  const targetPx = 50 / mmPerPixel;
+  state.roi.size = Math.min(targetPx, Math.min(state.imageEl.width, state.imageEl.height));
+  state.roi.x = (state.imageEl.width - state.roi.size) / 2;
+  state.roi.y = (state.imageEl.height - state.roi.size) / 2;
+  renderImageCanvas();
+  updateMetrics();
+  setStatus('50 mm ROI applied.');
+}
+
+function onCanvasPointerDown(event) {
+  if (!state.imageEl) return;
+
+  const point = getCanvasPoint(event);
+  const handles = getHitHandles();
+  const activeHandle = handles.find((handle) => {
+    const dx = point.x - handle.x;
+    const dy = point.y - handle.y;
+    return Math.abs(dx) <= 12 && Math.abs(dy) <= 12;
+  });
+
+  if (activeHandle) {
+    state.roi.activeHandle = activeHandle.name;
+    state.roi.dragging = true;
+    state.roi.dragStartX = point.x;
+    state.roi.dragStartY = point.y;
+    state.roi.originalX = state.roi.x;
+    state.roi.originalY = state.roi.y;
+    state.roi.originalSize = state.roi.size;
+    return;
+  }
+
+  if (point.x >= state.roi.x && point.x <= state.roi.x + state.roi.size && point.y >= state.roi.y && point.y <= state.roi.y + state.roi.size) {
+    state.roi.dragging = true;
+    state.roi.activeHandle = 'move';
+    state.roi.dragStartX = point.x;
+    state.roi.dragStartY = point.y;
+    state.roi.originalX = state.roi.x;
+    state.roi.originalY = state.roi.y;
+  }
+}
+
+function onCanvasPointerMove(event) {
+  if (!state.roi.dragging) return;
+
+  const point = getCanvasPoint(event);
+  const dx = point.x - state.roi.dragStartX;
+  const dy = point.y - state.roi.dragStartY;
+
+  if (state.roi.activeHandle === 'move') {
+    state.roi.x = clamp(state.roi.originalX + dx, 0, state.imageEl.width - state.roi.size);
+    state.roi.y = clamp(state.roi.originalY + dy, 0, state.imageEl.height - state.roi.size);
+  } else {
+    resizeROIByHandle(state.roi.activeHandle, dx, dy);
+  }
+
+  renderImageCanvas();
+  updateMetrics();
+}
+
+function onCanvasPointerUp() {
+  state.roi.dragging = false;
+  state.roi.activeHandle = null;
+}
+
+function getHitHandles() {
+  const roi = state.roi;
+  return [
+    { name: 'nw', x: roi.x, y: roi.y },
+    { name: 'ne', x: roi.x + roi.size, y: roi.y },
+    { name: 'sw', x: roi.x, y: roi.y + roi.size },
+    { name: 'se', x: roi.x + roi.size, y: roi.y + roi.size }
+  ];
+}
+
+function resizeROIByHandle(handle, dx, dy) {
+  const roi = state.roi;
+  let left = roi.originalX;
+  let top = roi.originalY;
+  let right = roi.originalX + roi.originalSize;
+  let bottom = roi.originalY + roi.originalSize;
+
+  if (handle.includes('e')) right += dx;
+  if (handle.includes('s')) bottom += dy;
+  if (handle.includes('w')) left += dx;
+  if (handle.includes('n')) top += dy;
+
+  if (state.roi.aspectLocked) {
+    const width = right - left;
+    const height = bottom - top;
+    const size = Math.max(30, Math.max(Math.abs(width), Math.abs(height)));
+
+    if (handle.includes('n')) {
+      if (handle.includes('w')) {
+        left = right - size;
+        top = bottom - size;
+      } else {
+        right = left + size;
+        top = bottom - size;
+      }
+    } else if (handle.includes('w')) {
+      left = right - size;
+      bottom = top + size;
+    } else {
+      right = left + size;
+      bottom = top + size;
+    }
+  }
+
+  let finalLeft = clamp(left, 0, state.imageEl.width);
+  let finalTop = clamp(top, 0, state.imageEl.height);
+  let finalRight = clamp(right, 0, state.imageEl.width);
+  let finalBottom = clamp(bottom, 0, state.imageEl.height);
+
+  let width = Math.max(30, Math.abs(finalRight - finalLeft));
+  let height = Math.max(30, Math.abs(finalBottom - finalTop));
+
+  if (state.roi.aspectLocked) {
+    const squareSize = Math.min(width, height, Math.min(state.imageEl.width, state.imageEl.height));
+    width = squareSize;
+    height = squareSize;
+  }
+
+  if (finalRight < finalLeft) {
+    [finalLeft, finalRight] = [finalRight, finalLeft];
+  }
+  if (finalBottom < finalTop) {
+    [finalTop, finalBottom] = [finalBottom, finalTop];
+  }
+
+  state.roi.x = clamp(finalLeft, 0, state.imageEl.width - width);
+  state.roi.y = clamp(finalTop, 0, state.imageEl.height - height);
+  state.roi.size = clamp(Math.min(width, height), 30, Math.min(state.imageEl.width, state.imageEl.height));
+}
+
+function clamp(value, min, max) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function processImagePipeline(forceAnalysis = false) {
+  if (!state.imageEl) {
+    setStatus('Load an image before processing.');
+    return;
+  }
+
+  if (!window.cv || !window.cv.Mat) {
+    checkOpenCV();
+    return;
+  }
+
+  const src = window.cv.imread(state.imageEl);
+  if (!src || src.rows === 0 || src.cols === 0) {
+    setStatus('Unable to read the uploaded image.');
+    return;
+  }
+
+  const processed = preprocessSource(src);
+  const preview = buildPreviewFromProcessed(processed);
+
+  window.cv.imshow(elements.previewCanvas, preview);
+  renderImageCanvas();
+
+  state.fragments = findFragments(processed);
+  recountFragments();
+  updateMetrics();
+
+  src.delete();
+  processed.delete();
+  preview.delete();
+  setStatus('Processing complete.');
+}
+
+function preprocessSource(src) {
+  const rgb = new window.cv.Mat();
+  window.cv.cvtColor(src, rgb, window.cv.COLOR_RGBA2RGB);
+
+  const lab = new window.cv.Mat();
+  window.cv.cvtColor(rgb, lab, window.cv.COLOR_RGB2Lab);
+
+  const channels = new window.cv.MatVector();
+  window.cv.split(lab, channels);
+
+  const lChannel = channels.get(0);
+  const clahe = new window.cv.CLAHE(2.0, new window.cv.Size(8, 8));
+  const enhancedL = new window.cv.Mat();
+  clahe.apply(lChannel, enhancedL);
+  channels.set(0, enhancedL);
+
+  const merged = new window.cv.Mat();
+  window.cv.merge(channels, merged);
+
+  const blur = new window.cv.Mat();
+  window.cv.GaussianBlur(merged, blur, new window.cv.Size(3, 3), 0.8, 0.8, window.cv.BORDER_DEFAULT);
+
+  const gray = new window.cv.Mat();
+  window.cv.cvtColor(blur, gray, window.cv.COLOR_Lab2GRAY);
+
+  const contrastBoost = Number(state.settings.contrastEnhancement || 1);
+  const adjustment = new window.cv.Mat();
+  gray.convertTo(adjustment, -1, contrastBoost, 0);
+
+  const threshold = new window.cv.Mat();
+  const blockSize = Math.max(3, Math.round(state.settings.thresholdSensitivity / 8) * 2 + 1);
+  const cValue = Math.max(1, 20 - state.settings.thresholdSensitivity / 3);
+  window.cv.adaptiveThreshold(
+    adjustment,
+    threshold,
+    255,
+    window.cv.ADAPTIVE_THRESH_GAUSSIAN_C,
+    window.cv.THRESH_BINARY_INV,
+    blockSize,
+    cValue
+  );
+
+  const cleaned = new window.cv.Mat();
+  const kernel = window.cv.Mat.ones(3, 3, window.cv.CV_8U);
+  window.cv.morphologyEx(threshold, cleaned, window.cv.MORPH_OPEN, kernel);
+
+  rgb.delete();
+  lab.delete();
+  channels.delete();
+  lChannel.delete();
+  enhancedL.delete();
+  merged.delete();
+  blur.delete();
+  gray.delete();
+  adjustment.delete();
+  threshold.delete();
+  kernel.delete();
+
+  return cleaned;
+}
+
+function buildPreviewFromProcessed(processed) {
+  const preview = new window.cv.Mat();
+  const edges = new window.cv.Mat();
+  const blur = new window.cv.Mat();
+  const gray = new window.cv.Mat();
+
+  window.cv.GaussianBlur(processed, blur, new window.cv.Size(3, 3), 0.5, 0.5, window.cv.BORDER_DEFAULT);
+  window.cv.cvtColor(blur, gray, window.cv.COLOR_GRAY2BGR);
+  window.cv.Canny(gray, edges, Number(state.settings.lowThreshold), Number(state.settings.highThreshold), 3, false);
+
+  const rendered = new window.cv.Mat(processed.rows, processed.cols, window.cv.CV_8UC3, new window.cv.Scalar(0, 0, 0));
+  const mask = new window.cv.Mat();
+  window.cv.cvtColor(processed, mask, window.cv.COLOR_GRAY2BGR);
+  window.cv.bitwise_or(mask, new window.cv.Mat(), rendered);
+
+  const edgeColor = new window.cv.Scalar(0, 0, 255);
+  const edgeBgr = new window.cv.Mat();
+  window.cv.cvtColor(edges, edgeBgr, window.cv.COLOR_GRAY2BGR);
+  const overlay = new window.cv.Mat();
+  window.cv.bitwise_or(rendered, edgeBgr, overlay);
+
+  blur.delete();
+  gray.delete();
+  edges.delete();
+  mask.delete();
+  edgeBgr.delete();
+  rendered.delete();
+
+  return overlay;
+}
+
+function findFragments(binaryMask) {
+  const contours = new window.cv.MatVector();
+  const hierarchy = new window.cv.Mat();
+  window.cv.findContours(binaryMask, contours, hierarchy, window.cv.RETR_EXTERNAL, window.cv.CHAIN_APPROX_SIMPLE);
+
+  const roi = state.roi;
+  const fragments = [];
+
+  for (let idx = 0; idx < contours.size(); idx += 1) {
+    const contour = contours.get(idx);
+    const area = window.cv.contourArea(contour);
+    if (area < 30) continue;
+
+    const rect = window.cv.boundingRect(contour);
+    const centroidX = rect.x + rect.width / 2;
+    const centroidY = rect.y + rect.height / 2;
+
+    fragments.push({
+      label: idx + 1,
+      area,
+      x: rect.x,
+      y: rect.y,
+      w: rect.width,
+      h: rect.height,
+      centroidX,
+      centroidY,
+      enabled: false
+    });
+  }
+
+  hierarchy.delete();
+  contours.delete();
+  return fragments;
+}
+
+function recountFragments() {
+  const roi = state.roi;
+  let count = 0;
+
+  state.fragments.forEach((fragment) => {
+    const centroidX = fragment.centroidX;
+    const centroidY = fragment.centroidY;
+    const insideRoi = centroidX >= roi.x && centroidX <= roi.x + roi.size && centroidY >= roi.y && centroidY <= roi.y + roi.size;
+
+    let includeIt = false;
+    if (state.settings.countMode === 'centroid') {
+      includeIt = insideRoi;
+    } else if (state.settings.countMode === 'majority') {
+      const overlapWidth = Math.max(0, Math.min(fragment.x + fragment.w, roi.x + roi.size) - Math.max(fragment.x, roi.x));
+      const overlapHeight = Math.max(0, Math.min(fragment.y + fragment.h, roi.y + roi.size) - Math.max(fragment.y, roi.y));
+      const overlapArea = overlapWidth * overlapHeight;
+      includeIt = fragment.area > 0 && overlapArea / fragment.area > 0.5;
+    } else if (state.settings.countMode === 'full') {
+      includeIt = fragment.x >= roi.x && fragment.y >= roi.y && fragment.x + fragment.w <= roi.x + roi.size && fragment.y + fragment.h <= roi.y + roi.size;
+    }
+
+    fragment.enabled = includeIt;
+    if (includeIt) count += 1;
+  });
+
+  elements.fragmentCountValue.textContent = String(count);
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+  ready();
+});
+
+window.addEventListener('load', () => {
+  if (window.cv && window.cv.Mat) checkOpenCV();
+});
