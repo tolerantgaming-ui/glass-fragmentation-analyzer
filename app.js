@@ -71,6 +71,7 @@ function ready() {
 
   bindEvents();
   updateControlOutputs();
+  state.settings.countMode = elements.countMode.value;
   setStatus('Ready. Add an image to begin.');
   checkOpenCV();
 }
@@ -78,9 +79,7 @@ function ready() {
 function bindEvents() {
   elements.imageInput.addEventListener('change', (event) => {
     const file = event.target.files && event.target.files[0];
-    if (file) {
-      loadImageFile(file);
-    }
+    if (file) loadImageFile(file);
   });
 
   ['dragenter', 'dragover'].forEach((type) => {
@@ -99,9 +98,7 @@ function bindEvents() {
 
   elements.dropZone.addEventListener('drop', (event) => {
     const file = event.dataTransfer && event.dataTransfer.files[0];
-    if (file) {
-      loadImageFile(file);
-    }
+    if (file) loadImageFile(file);
   });
 
   elements.startCalibrationBtn.addEventListener('click', () => {
@@ -115,15 +112,13 @@ function bindEvents() {
     state.calibration.points = [];
     state.calibration.mmPerPixel = null;
     setStatus('Calibration reset.');
-    renderImageCanvas();
     updateMetrics();
+    renderImageCanvas();
   });
 
   elements.knownDistance.addEventListener('input', () => {
     state.calibration.knownDistanceMm = Number(elements.knownDistance.value) || 0;
-    if (state.calibration.points.length === 2) {
-      computeCalibrationFromPoints();
-    }
+    if (state.calibration.points.length === 2) computeCalibrationFromPoints();
     updateMetrics();
   });
 
@@ -167,9 +162,7 @@ function bindEvents() {
     input.addEventListener('input', () => {
       syncSettingsFromInputs();
       updateControlOutputs();
-      if (state.imageEl) {
-        processImagePipeline();
-      }
+      if (state.imageEl && state.cvReady) processImagePipeline();
     });
   });
 
@@ -195,11 +188,11 @@ function syncSettingsFromInputs() {
 }
 
 function updateControlOutputs() {
-  elements.thresholdSensitivityValue.textContent = elements.thresholdSensitivity.value;
-  elements.edgeSensitivityValue.textContent = elements.edgeSensitivity.value;
+  elements.thresholdSensitivityValue.textContent = String(elements.thresholdSensitivity.value);
+  elements.edgeSensitivityValue.textContent = String(elements.edgeSensitivity.value);
   elements.contrastEnhancementValue.textContent = Number(elements.contrastEnhancement.value).toFixed(1);
-  elements.lowThresholdValue.textContent = elements.lowThreshold.value;
-  elements.highThresholdValue.textContent = elements.highThreshold.value;
+  elements.lowThresholdValue.textContent = String(elements.lowThreshold.value);
+  elements.highThresholdValue.textContent = String(elements.highThreshold.value);
 }
 
 function setStatus(message) {
@@ -234,15 +227,14 @@ function loadImageFile(file) {
       state.roi.y = 60;
       state.roi.size = Math.min(img.width, img.height) * 0.5;
       state.calibration.points = [];
+      state.calibration.mmPerPixel = null;
       state.fragments = [];
       elements.imageCanvas.width = img.width;
       elements.imageCanvas.height = img.height;
       elements.previewCanvas.width = img.width;
       elements.previewCanvas.height = img.height;
       renderImageCanvas();
-      if (state.cvReady) {
-        processImagePipeline();
-      }
+      if (state.cvReady) processImagePipeline();
     };
     img.src = dataUrl;
   };
@@ -270,7 +262,6 @@ function renderImageCanvas() {
   }
 
   ctx.drawImage(state.imageEl, 0, 0, elements.imageCanvas.width, elements.imageCanvas.height);
-
   drawCalibrationMarkers(ctx);
   drawROI(ctx);
   drawFragmentOverlay(ctx);
@@ -295,7 +286,7 @@ function drawCalibrationMarkers(ctx) {
     ctx.beginPath();
     ctx.moveTo(a.x, a.y);
     ctx.lineTo(b.x, b.y);
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+    ctx.strokeStyle = 'rgba(255,255,255,0.9)';
     ctx.setLineDash([6, 6]);
     ctx.stroke();
     ctx.setLineDash([]);
@@ -339,8 +330,8 @@ function drawROI(ctx) {
 function drawFragmentOverlay(ctx) {
   if (!state.fragments.length) return;
 
-  state.fragments.forEach((fragment, index) => {
-    const color = fragment.color || getPaletteColor(index);
+  state.fragments.forEach((fragment, idx) => {
+    const color = fragment.enabled ? getPaletteColor(idx) : 'rgba(255,255,255,0.18)';
     ctx.save();
     ctx.strokeStyle = color;
     ctx.lineWidth = 1.5;
@@ -359,12 +350,11 @@ function getPaletteColor(index) {
 
 function onCanvasClickForCalibration(event) {
   if (!state.calibration.active) return;
+
   const point = getCanvasPoint(event);
   state.calibration.points.push(point);
 
-  if (state.calibration.points.length > 2) {
-    state.calibration.points = state.calibration.points.slice(-2);
-  }
+  if (state.calibration.points.length > 2) state.calibration.points = state.calibration.points.slice(-2);
 
   if (state.calibration.points.length === 2) {
     computeCalibrationFromPoints();
@@ -385,6 +375,7 @@ function computeCalibrationFromPoints() {
     state.calibration.mmPerPixel = null;
     return;
   }
+
   const distanceMm = Number(elements.knownDistance.value) || state.calibration.knownDistanceMm || 1;
   state.calibration.knownDistanceMm = distanceMm;
   state.calibration.mmPerPixel = distanceMm / distancePx;
@@ -427,8 +418,8 @@ function apply50mmROI() {
 
 function onCanvasPointerDown(event) {
   if (!state.imageEl) return;
-  const point = getCanvasPoint(event);
 
+  const point = getCanvasPoint(event);
   const handles = getHitHandles();
   const activeHandle = handles.find((handle) => {
     const dx = point.x - handle.x;
@@ -447,8 +438,7 @@ function onCanvasPointerDown(event) {
     return;
   }
 
-  if (point.x >= state.roi.x && point.x <= state.roi.x + state.roi.size &&
-      point.y >= state.roi.y && point.y <= state.roi.y + state.roi.size) {
+  if (point.x >= state.roi.x && point.x <= state.roi.x + state.roi.size && point.y >= state.roi.y && point.y <= state.roi.y + state.roi.size) {
     state.roi.dragging = true;
     state.roi.activeHandle = 'move';
     state.roi.dragStartX = point.x;
@@ -460,6 +450,7 @@ function onCanvasPointerDown(event) {
 
 function onCanvasPointerMove(event) {
   if (!state.roi.dragging) return;
+
   const point = getCanvasPoint(event);
   const dx = point.x - state.roi.dragStartX;
   const dy = point.y - state.roi.dragStartY;
@@ -497,51 +488,57 @@ function resizeROIByHandle(handle, dx, dy) {
   let right = roi.originalX + roi.originalSize;
   let bottom = roi.originalY + roi.originalSize;
 
-  if (handle.includes('e')) right = right + dx;
-  if (handle.includes('s')) bottom = bottom + dy;
-  if (handle.includes('w')) left = left + dx;
-  if (handle.includes('n')) top = top + dy;
-
-  let size = Math.max(30, Math.max(right - left, bottom - top));
+  if (handle.includes('e')) right += dx;
+  if (handle.includes('s')) bottom += dy;
+  if (handle.includes('w')) left += dx;
+  if (handle.includes('n')) top += dy;
 
   if (state.roi.aspectLocked) {
-    size = Math.max(Math.abs(right - left), Math.abs(bottom - top));
-    size = Math.max(size, 30);
-    if (handle === 'nw') {
-      left = right - size;
-      top = bottom - size;
-    } else if (handle === 'ne') {
-      right = left + size;
-      top = bottom - size;
-    } else if (handle === 'sw') {
+    const width = right - left;
+    const height = bottom - top;
+    const size = Math.max(30, Math.max(Math.abs(width), Math.abs(height)));
+
+    if (handle.includes('n')) {
+      if (handle.includes('w')) {
+        left = right - size;
+        top = bottom - size;
+      } else {
+        right = left + size;
+        top = bottom - size;
+      }
+    } else if (handle.includes('w')) {
       left = right - size;
       bottom = top + size;
-    } else if (handle === 'se') {
+    } else {
       right = left + size;
       bottom = top + size;
     }
   }
 
-  if (left < 0) left = 0;
-  if (top < 0) top = 0;
-  if (right > state.imageEl.width) right = state.imageEl.width;
-  if (bottom > state.imageEl.height) bottom = state.imageEl.height;
+  let finalLeft = clamp(left, 0, state.imageEl.width);
+  let finalTop = clamp(top, 0, state.imageEl.height);
+  let finalRight = clamp(right, 0, state.imageEl.width);
+  let finalBottom = clamp(bottom, 0, state.imageEl.height);
 
-  const finalSize = Math.min(right - left, bottom - top);
-  if (state.roi.aspectLocked) {
-    roi.size = Math.min(finalSize, Math.min(state.imageEl.width, state.imageEl.height));
-  } else {
-    roi.size = Math.max(30, Math.min(Math.max(right - left, 30), state.imageEl.width - left));
-  }
+  let width = Math.max(30, Math.abs(finalRight - finalLeft));
+  let height = Math.max(30, Math.abs(finalBottom - finalTop));
 
   if (state.roi.aspectLocked) {
-    roi.x = clamp(left, 0, state.imageEl.width - roi.size);
-    roi.y = clamp(top, 0, state.imageEl.height - roi.size);
-    roi.size = clamp(roi.size, 30, Math.min(state.imageEl.width, state.imageEl.height));
-  } else {
-    roi.x = clamp(left, 0, state.imageEl.width - roi.size);
-    roi.y = clamp(top, 0, state.imageEl.height - roi.size);
+    const squareSize = Math.min(width, height, Math.min(state.imageEl.width, state.imageEl.height));
+    width = squareSize;
+    height = squareSize;
   }
+
+  if (finalRight < finalLeft) {
+    [finalLeft, finalRight] = [finalRight, finalLeft];
+  }
+  if (finalBottom < finalTop) {
+    [finalTop, finalBottom] = [finalBottom, finalTop];
+  }
+
+  state.roi.x = clamp(finalLeft, 0, state.imageEl.width - width);
+  state.roi.y = clamp(finalTop, 0, state.imageEl.height - height);
+  state.roi.size = clamp(Math.min(width, height), 30, Math.min(state.imageEl.width, state.imageEl.height));
 }
 
 function clamp(value, min, max) {
@@ -549,34 +546,34 @@ function clamp(value, min, max) {
 }
 
 function processImagePipeline(forceAnalysis = false) {
-  if (!state.imageEl || !window.cv || !window.cv.Mat) {
+  if (!state.imageEl) {
+    setStatus('Load an image before processing.');
+    return;
+  }
+
+  if (!window.cv || !window.cv.Mat) {
     checkOpenCV();
     return;
   }
 
   const src = window.cv.imread(state.imageEl);
   if (!src || src.rows === 0 || src.cols === 0) {
-    setStatus('Could not read the uploaded image.');
+    setStatus('Unable to read the uploaded image.');
     return;
   }
 
   const processed = preprocessSource(src);
-  const preview = window.cv.imread(state.imageEl);
-  const edgeMap = performEdgeDetection(processed);
-  const segmented = segmentFragments(processed, preview, edgeMap);
+  const preview = buildPreviewFromProcessed(processed);
 
-  window.cv.imshow(elements.previewCanvas, segmented.preview);
+  window.cv.imshow(elements.previewCanvas, preview);
   renderImageCanvas();
 
-  if (forceAnalysis || state.fragments.length === 0) {
-    recountFragments();
-  }
+  state.fragments = findFragments(processed);
+  recountFragments();
+  updateMetrics();
 
   src.delete();
   processed.delete();
-  edgeMap.delete();
-  segmented.preview.delete();
-  segmented.labels.delete();
   preview.delete();
   setStatus('Processing complete.');
 }
@@ -606,11 +603,15 @@ function preprocessSource(src) {
   const gray = new window.cv.Mat();
   window.cv.cvtColor(blur, gray, window.cv.COLOR_Lab2GRAY);
 
+  const contrastBoost = Number(state.settings.contrastEnhancement || 1);
+  const adjustment = new window.cv.Mat();
+  gray.convertTo(adjustment, -1, contrastBoost, 0);
+
   const threshold = new window.cv.Mat();
   const blockSize = Math.max(3, Math.round(state.settings.thresholdSensitivity / 8) * 2 + 1);
   const cValue = Math.max(1, 20 - state.settings.thresholdSensitivity / 3);
   window.cv.adaptiveThreshold(
-    gray,
+    adjustment,
     threshold,
     255,
     window.cv.ADAPTIVE_THRESH_GAUSSIAN_C,
@@ -631,126 +632,79 @@ function preprocessSource(src) {
   merged.delete();
   blur.delete();
   gray.delete();
+  adjustment.delete();
   threshold.delete();
   kernel.delete();
 
   return cleaned;
 }
 
-function performEdgeDetection(processed) {
-  const gray = new window.cv.Mat();
+function buildPreviewFromProcessed(processed) {
+  const preview = new window.cv.Mat();
   const edges = new window.cv.Mat();
   const blur = new window.cv.Mat();
+  const gray = new window.cv.Mat();
 
   window.cv.GaussianBlur(processed, blur, new window.cv.Size(3, 3), 0.5, 0.5, window.cv.BORDER_DEFAULT);
   window.cv.cvtColor(blur, gray, window.cv.COLOR_GRAY2BGR);
-  window.cv.cvtColor(gray, gray, window.cv.COLOR_BGR2GRAY);
+  window.cv.Canny(gray, edges, Number(state.settings.lowThreshold), Number(state.settings.highThreshold), 3, false);
 
-  const low = Number(state.settings.lowThreshold);
-  const high = Number(state.settings.highThreshold);
-  window.cv.Canny(gray, edges, low, high, 3, false);
+  const rendered = new window.cv.Mat(processed.rows, processed.cols, window.cv.CV_8UC3, new window.cv.Scalar(0, 0, 0));
+  const mask = new window.cv.Mat();
+  window.cv.cvtColor(processed, mask, window.cv.COLOR_GRAY2BGR);
+  window.cv.bitwise_or(mask, new window.cv.Mat(), rendered);
+
+  const edgeColor = new window.cv.Scalar(0, 0, 255);
+  const edgeBgr = new window.cv.Mat();
+  window.cv.cvtColor(edges, edgeBgr, window.cv.COLOR_GRAY2BGR);
+  const overlay = new window.cv.Mat();
+  window.cv.bitwise_or(rendered, edgeBgr, overlay);
 
   blur.delete();
   gray.delete();
+  edges.delete();
+  mask.delete();
+  edgeBgr.delete();
+  rendered.delete();
 
-  return edges;
+  return overlay;
 }
 
-function segmentFragments(processed, original, edges) {
-  const kernel = window.cv.Mat.ones(3, 3, window.cv.CV_8U);
-  const opened = new window.cv.Mat();
-  window.cv.morphologyEx(processed, opened, window.cv.MORPH_OPEN, kernel);
-
-  const dist = new window.cv.Mat();
-  window.cv.distanceTransform(opened, dist, window.cv.DIST_L2, 5);
-
-  const maxVal = window.cv.minMaxLoc(dist).maxVal;
-  const sureFg = new window.cv.Mat();
-  window.cv.threshold(dist, sureFg, 0.35 * maxVal, 255, window.cv.THRESH_BINARY);
-
-  const markerMask = new window.cv.Mat();
-  window.cv.threshold(opened, markerMask, 0, 255, window.cv.THRESH_BINARY);
-
-  const labels = new window.cv.Mat();
-  const stats = new window.cv.Mat();
-  const centroids = new window.cv.Mat();
-  const connectivity = 8;
-  const ltype = window.cv.CV_32S;
-
-  window.cv.connectedComponentsWithStats(markerMask, labels, stats, centroids, connectivity, ltype);
-
-  const preview = new window.cv.Mat();
-  original.copyTo(preview);
+function findFragments(binaryMask) {
+  const contours = new window.cv.MatVector();
+  const hierarchy = new window.cv.Mat();
+  window.cv.findContours(binaryMask, contours, hierarchy, window.cv.RETR_EXTERNAL, window.cv.CHAIN_APPROX_SIMPLE);
 
   const fragments = [];
-  const totalLabels = Number(stats.rows);
-  for (let i = 1; i < totalLabels; i += 1) {
-    const area = Number(stats.intAt(i, window.cv.CC_STAT_AREA || 0));
-    if (Number.isNaN(area) || area < 30) continue;
 
-    const x = stats.intAt(i, 0);
-    const y = stats.intAt(i, 1);
-    const w = stats.intAt(i, 2);
-    const h = stats.intAt(i, 3);
+  for (let idx = 0; idx < contours.size(); idx += 1) {
+    const contour = contours.get(idx);
+    const area = window.cv.contourArea(contour);
+    if (area < 30) continue;
 
-    const bbox = { x, y, w, h };
-    const centroidX = centroids.doubleAt(i, 0);
-    const centroidY = centroids.doubleAt(i, 1);
-    const label = i;
-    const color = getPaletteColor(fragments.length);
-
-    const roi = state.roi;
-    const withinRoi = centroidX >= roi.x && centroidX <= roi.x + roi.size && centroidY >= roi.y && centroidY <= roi.y + roi.size;
+    const rect = window.cv.boundingRect(contour);
+    const centroidX = rect.x + rect.width / 2;
+    const centroidY = rect.y + rect.height / 2;
 
     fragments.push({
-      label,
+      label: idx + 1,
       area,
-      x,
-      y,
-      w,
-      h,
+      x: rect.x,
+      y: rect.y,
+      w: rect.width,
+      h: rect.height,
       centroidX,
       centroidY,
-      withinRoi,
-      color
+      enabled: false
     });
-
-    const boundingRect = new window.cv.Rect(x, y, w, h);
-    const rectangleColor = new window.cv.Scalar(...hexToScalar(color));
-    window.cv.rectangle(preview, boundingRect, rectangleColor, 1, window.cv.LINE_8, 0);
-    window.cv.putText(preview, String(label), new window.cv.Point(x + 5, y + 15), window.cv.FONT_HERSHEY_SIMPLEX, 0.6, rectangleColor, 1, window.cv.LINE_AA, false);
-    rectangleColor.delete();
   }
 
-  state.fragments = fragments;
-  updateMetrics();
-  recountFragments();
-
-  dist.delete();
-  maxVal.delete();
-  sureFg.delete();
-  markerMask.delete();
-  kernel.delete();
-  opened.delete();
-
-  return { preview, labels };
-}
-
-function hexToScalar(hex) {
-  const clean = hex.replace('#', '');
-  const value = parseInt(clean, 16);
-  const r = (value >> 16) & 255;
-  const g = (value >> 8) & 255;
-  const b = value & 255;
-  return [b, g, r];
+  hierarchy.delete();
+  contours.delete();
+  return fragments;
 }
 
 function recountFragments() {
-  if (!state.fragments.length) {
-    elements.fragmentCountValue.textContent = '0';
-    return;
-  }
-
   const roi = state.roi;
   let count = 0;
 
@@ -759,51 +713,29 @@ function recountFragments() {
     const centroidY = fragment.centroidY;
     const insideRoi = centroidX >= roi.x && centroidX <= roi.x + roi.size && centroidY >= roi.y && centroidY <= roi.y + roi.size;
 
-    let includeItem = false;
+    let includeIt = false;
     if (state.settings.countMode === 'centroid') {
-      includeItem = insideRoi;
+      includeIt = insideRoi;
     } else if (state.settings.countMode === 'majority') {
-      const fragmentArea = fragment.area;
-      const roiArea = Math.max(0, Math.min(fragment.x + fragment.w, roi.x + roi.size) - Math.max(fragment.x, roi.x)) *
-        Math.max(0, Math.min(fragment.y + fragment.h, roi.y + roi.size) - Math.max(fragment.y, roi.y));
-      includeItem = (roiArea / fragmentArea) > 0.5;
+      const overlapWidth = Math.max(0, Math.min(fragment.x + fragment.w, roi.x + roi.size) - Math.max(fragment.x, roi.x));
+      const overlapHeight = Math.max(0, Math.min(fragment.y + fragment.h, roi.y + roi.size) - Math.max(fragment.y, roi.y));
+      const overlapArea = overlapWidth * overlapHeight;
+      includeIt = fragment.area > 0 && overlapArea / fragment.area > 0.5;
     } else if (state.settings.countMode === 'full') {
-      const fullInside = fragment.x >= roi.x && fragment.y >= roi.y && fragment.x + fragment.w <= roi.x + roi.size && fragment.y + fragment.h <= roi.y + roi.size;
-      includeItem = fullInside;
+      includeIt = fragment.x >= roi.x && fragment.y >= roi.y && fragment.x + fragment.w <= roi.x + roi.size && fragment.y + fragment.h <= roi.y + roi.size;
     }
 
-    if (includeItem) {
-      count += 1;
-      fragment.enabled = true;
-    } else {
-      fragment.enabled = false;
-    }
+    fragment.enabled = includeIt;
+    if (includeIt) count += 1;
   });
 
   elements.fragmentCountValue.textContent = String(count);
 }
 
-const bootstrap = () => {
+window.addEventListener('DOMContentLoaded', () => {
   ready();
-};
-
-window.addEventListener('DOMContentLoaded', bootstrap);
+});
 
 window.addEventListener('load', () => {
-  if (window.cv) {
-    checkOpenCV();
-  }
+  if (window.cv && window.cv.Mat) checkOpenCV();
 });
-
-window.addEventListener('error', (event) => {
-  if (event.message && event.message.includes('opencv')) {
-    setStatus('OpenCV.js failed to load. Download or place the library at vendor/opencv.js.');
-  }
-});
-
-if (typeof window !== 'undefined') {
-  if (window.cv && window.cv.Mat) {
-    setStatus('OpenCV ready.');
-  }
-}
-

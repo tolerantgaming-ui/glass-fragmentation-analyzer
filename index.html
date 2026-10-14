@@ -1,288 +1,129 @@
-:root {
-  --bg: #0d1726;
-  --panel: #122033;
-  --surface: #1d3353;
-  --surface-strong: #274f7e;
-  --text: #edf4ff;
-  --muted: #b8c7e0;
-  --accent: #66d9ef;
-  --accent-strong: #45b3db;
-  --warning: #ffcf5a;
-  --border: rgba(255, 255, 255, 0.1);
-}
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Glass Fragmentation Analyzer</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="panel controls-panel">
+        <h1>Glass Fragment Analyzer</h1>
 
-* {
-  box-sizing: border-box;
-}
+        <div class="section upload-panel">
+          <label class="file-picker" for="imageInput">
+            <input id="imageInput" type="file" accept="image/png,image/jpeg" />
+            <span>Upload image</span>
+          </label>
+          <div id="dropZone" class="drop-zone">Drag and drop image here</div>
+        </div>
 
-html, body {
-  margin: 0;
-  min-height: 100%;
-  background: var(--bg);
-  color: var(--text);
-  font-family: Inter, 'Segoe UI', sans-serif;
-}
+        <div class="section">
+          <h2>Calibration</h2>
+          <div class="row">
+            <label for="knownDistance">Known distance (mm)</label>
+            <input id="knownDistance" type="number" min="0.1" step="0.1" value="50" />
+          </div>
+          <div class="row actions-row">
+            <button id="startCalibrationBtn" type="button">Start calibration</button>
+            <button id="clearCalibrationBtn" type="button" class="secondary">Clear</button>
+          </div>
+          <div class="metrics-box">
+            <div><span>mm / px</span><strong id="mmPerPixelValue">—</strong></div>
+            <div><span>Scale factor</span><strong id="scaleFactorValue">—</strong></div>
+          </div>
+        </div>
 
-body {
-  min-height: 100vh;
-}
+        <div class="section">
+          <h2>ROI</h2>
+          <div class="metrics-box">
+            <div><span>Pixels</span><strong id="roiPixelsValue">—</strong></div>
+            <div><span>Millimetres</span><strong id="roiMmValue">—</strong></div>
+          </div>
+          <div class="row checkbox-row">
+            <label><input id="aspectLock" type="checkbox" checked /> Lock 1:1 aspect ratio</label>
+          </div>
+          <div class="row actions-row">
+            <button id="roi50Btn" type="button">Set 50 mm ROI</button>
+            <button id="roiAutoBtn" type="button" class="secondary">Center ROI</button>
+          </div>
+        </div>
 
-button, input, select {
-  font: inherit;
-}
+        <div class="section">
+          <h2>Preprocessing</h2>
+          <div class="slider-group">
+            <label for="thresholdSensitivity">Threshold sensitivity</label>
+            <input id="thresholdSensitivity" type="range" min="1" max="80" value="24" />
+            <output id="thresholdSensitivityValue">24</output>
+          </div>
 
-.app-shell {
-  display: grid;
-  grid-template-columns: 360px minmax(0, 1fr);
-  min-height: 100vh;
-}
+          <div class="slider-group">
+            <label for="edgeSensitivity">Edge sensitivity</label>
+            <input id="edgeSensitivity" type="range" min="1" max="80" value="35" />
+            <output id="edgeSensitivityValue">35</output>
+          </div>
 
-.panel {
-  background: rgba(18, 32, 51, 0.96);
-  border-right: 1px solid var(--border);
-  padding: 24px 18px 30px;
-  overflow-y: auto;
-}
+          <div class="slider-group">
+            <label for="contrastEnhancement">Contrast enhancement</label>
+            <input id="contrastEnhancement" type="range" min="1" max="5" step="0.5" value="2.5" />
+            <output id="contrastEnhancementValue">2.5</output>
+          </div>
+        </div>
 
-.controls-panel h1 {
-  margin: 0 0 20px;
-  font-size: 1.8rem;
-}
+        <div class="section">
+          <h2>Edge detection</h2>
+          <div class="slider-group">
+            <label for="lowThreshold">Low threshold</label>
+            <input id="lowThreshold" type="range" min="10" max="200" value="50" />
+            <output id="lowThresholdValue">50</output>
+          </div>
 
-.section {
-  background: rgba(255,255,255,0.02);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 14px 12px 12px;
-  margin-bottom: 18px;
-}
+          <div class="slider-group">
+            <label for="highThreshold">High threshold</label>
+            <input id="highThreshold" type="range" min="50" max="400" value="150" />
+            <output id="highThresholdValue">150</output>
+          </div>
+        </div>
 
-.section h2 {
-  margin: 0 0 12px;
-  font-size: 1.05rem;
-}
+        <div class="section">
+          <h2>Counting</h2>
+          <div class="row">
+            <label for="countMode">Mode</label>
+            <select id="countMode">
+              <option value="centroid">Centroid Count</option>
+              <option value="majority">Majority Area</option>
+              <option value="full">Full Fragment</option>
+            </select>
+          </div>
+          <div class="count-box">
+            <span>Fragments counted</span>
+            <strong id="fragmentCountValue">0</strong>
+          </div>
+        </div>
+      </aside>
 
-.upload-panel {
-  padding: 12px;
-}
+      <main class="workspace">
+        <div class="canvas-toolbar">
+          <button id="processBtn" type="button">Update preview</button>
+          <button id="rerunAnalysisBtn" type="button" class="secondary">Recount</button>
+          <span id="statusText" class="status-text">Waiting for image</span>
+        </div>
 
-.file-picker {
-  display: block;
-  cursor: pointer;
-  background: linear-gradient(135deg, var(--surface-strong), var(--surface));
-  border: 1px solid rgba(255,255,255,0.2);
-  border-radius: 10px;
-  padding: 12px 14px;
-  text-align: center;
-  font-weight: 600;
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
-}
+        <div class="canvas-grid">
+          <div class="canvas-card">
+            <h3>Source + ROI</h3>
+            <canvas id="imageCanvas" width="900" height="700"></canvas>
+          </div>
+          <div class="canvas-card">
+            <h3>Preprocessed preview</h3>
+            <canvas id="previewCanvas" width="900" height="700"></canvas>
+          </div>
+        </div>
+      </main>
+    </div>
 
-.file-picker:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.2);
-}
-
-.file-picker input {
-  display: none;
-}
-
-.drop-zone {
-  margin-top: 10px;
-  background: rgba(255,255,255,0.02);
-  border: 1px dashed rgba(255,255,255,0.18);
-  border-radius: 10px;
-  min-height: 62px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  color: var(--muted);
-  padding: 8px;
-}
-
-.drop-zone.dragover {
-  border-color: var(--accent);
-  background: rgba(102, 217, 239, 0.1);
-}
-
-.row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 10px;
-}
-
-.row label, .slider-group label {
-  color: var(--muted);
-  font-size: 0.92rem;
-}
-
-.row input[type='number'], .row select {
-  width: 120px;
-  background: rgba(255,255,255,0.03);
-  color: var(--text);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 8px 10px;
-  text-align: right;
-}
-
-.actions-row {
-  justify-content: flex-start;
-}
-
-button {
-  appearance: none;
-  background: linear-gradient(135deg, var(--accent), var(--accent-strong));
-  color: #0d1726;
-  border: none;
-  border-radius: 10px;
-  padding: 9px 12px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: filter 0.15s ease, transform 0.15s ease;
-}
-
-button:hover {
-  filter: brightness(1.05);
-  transform: translateY(-1px);
-}
-
-button.secondary {
-  background: rgba(255,255,255,0.06);
-  color: var(--text);
-  border: 1px solid var(--border);
-}
-
-.metrics-box {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0,1fr));
-  gap: 10px;
-  margin-top: 8px;
-  padding-top: 8px;
-}
-
-.metrics-box > div {
-  background: rgba(255,255,255,0.02);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 8px 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.metrics-box span {
-  color: var(--muted);
-  font-size: 0.8rem;
-}
-
-.metrics-box strong {
-  font-size: 1.05rem;
-}
-
-.checkbox-row {
-  justify-content: flex-start;
-}
-
-.slider-group {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 12px;
-}
-
-.slider-group label {
-  grid-column: 1 / -1;
-}
-
-.slider-group input[type='range'] {
-  width: 100%;
-}
-
-output {
-  min-width: 44px;
-  text-align: right;
-  color: var(--warning);
-  font-weight: 700;
-}
-
-.count-box {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-top: 10px;
-  background: rgba(255,255,255,0.02);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 10px 12px;
-}
-
-.workspace {
-  padding: 18px;
-}
-
-.canvas-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  background: rgba(18, 32, 51, 0.82);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 12px 14px;
-  margin-bottom: 16px;
-}
-
-.status-text {
-  color: var(--muted);
-  margin-left: auto;
-  font-size: 0.92rem;
-}
-
-.canvas-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(300px, 1fr));
-  gap: 16px;
-}
-
-.canvas-card {
-  background: rgba(18, 32, 51, 0.8);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 12px;
-}
-
-.canvas-card h3 {
-  margin: 0 0 12px;
-  font-size: 1rem;
-  color: var(--muted);
-}
-
-canvas {
-  display: block;
-  width: 100%;
-  max-width: 100%;
-  height: 560px;
-  background: #06131e;
-  border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 10px;
-  object-fit: contain;
-}
-
-@media (max-width: 1100px) {
-  .app-shell {
-    grid-template-columns: 1fr;
-  }
-
-  .panel {
-    border-right: none;
-    border-bottom: 1px solid var(--border);
-  }
-
-  .canvas-grid {
-    grid-template-columns: 1fr;
-  }
-}
+    <script src="./vendor/opencv.js"></script>
+    <script src="./app.js"></script>
+  </body>
+</html>
