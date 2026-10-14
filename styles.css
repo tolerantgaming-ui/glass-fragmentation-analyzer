@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Glass Fragmentation Analyzer</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="panel controls-panel">
+        <h1>Glass Fragment Analyzer</h1>
+
+        <div class="section upload-panel">
+          <label class="file-picker" for="imageInput">
+            <input id="imageInput" type="file" accept="image/png,image/jpeg" />
+            <span>Upload image</span>
+          </label>
+          <div id="dropZone" class="drop-zone">Drag and drop image here</div>
+        </div>
+
+        <div class="section">
+          <h2>Calibration</h2>
+          <div class="row">
+            <label for="knownDistance">Known distance (mm)</label>
+            <input id="knownDistance" type="number" min="0.1" step="0.1" value="50" />
+          </div>
+          <div class="row actions-row">
+            <button id="startCalibrationBtn" type="button">Start calibration</button>
+            <button id="clearCalibrationBtn" type="button" class="secondary">Clear</button>
+          </div>
+          <div class="metrics-box">
+            <div><span>mm / px</span><strong id="mmPerPixelValue">—</strong></div>
+            <div><span>Scale factor</span><strong id="scaleFactorValue">—</strong></div>
+          </div>
+        </div>
+
+        <div class="section">
+          <h2>ROI</h2>
+          <div class="metrics-box">
+            <div><span>Pixels</span><strong id="roiPixelsValue">—</strong></div>
+            <div><span>Millimetres</span><strong id="roiMmValue">—</strong></div>
+          </div>
+          <div class="row checkbox-row">
+            <label><input id="aspectLock" type="checkbox" checked /> Lock 1:1 aspect ratio</label>
+          </div>
+          <div class="row actions-row">
+            <button id="roi50Btn" type="button">Set 50 mm ROI</button>
+            <button id="roiAutoBtn" type="button" class="secondary">Center ROI</button>
+          </div>
+        </div>
+
+        <div class="section">
+          <h2>Preprocessing</h2>
+          <div class="slider-group">
+            <label for="thresholdSensitivity">Threshold sensitivity</label>
+            <input id="thresholdSensitivity" type="range" min="1" max="80" value="24" />
+            <output id="thresholdSensitivityValue">24</output>
+          </div>
+
+          <div class="slider-group">
+            <label for="edgeSensitivity">Edge sensitivity</label>
+            <input id="edgeSensitivity" type="range" min="1" max="80" value="35" />
+            <output id="edgeSensitivityValue">35</output>
+          </div>
+
+          <div class="slider-group">
+            <label for="contrastEnhancement">Contrast enhancement</label>
+            <input id="contrastEnhancement" type="range" min="1" max="5" step="0.5" value="2.5" />
+            <output id="contrastEnhancementValue">2.5</output>
+          </div>
+        </div>
+
+        <div class="section">
+          <h2>Edge detection</h2>
+          <div class="slider-group">
+            <label for="lowThreshold">Low threshold</label>
+            <input id="lowThreshold" type="range" min="10" max="200" value="50" />
+            <output id="lowThresholdValue">50</output>
+          </div>
+
+          <div class="slider-group">
+            <label for="highThreshold">High threshold</label>
+            <input id="highThreshold" type="range" min="50" max="400" value="150" />
+            <output id="highThresholdValue">150</output>
+          </div>
+        </div>
+
+        <div class="section">
+          <h2>Counting</h2>
+          <div class="row">
+            <label for="countMode">Mode</label>
+            <select id="countMode">
+              <option value="centroid">Centroid Count</option>
+              <option value="majority">Majority Area</option>
+              <option value="full">Full Fragment</option>
+            </select>
+          </div>
+          <div class="count-box">
+            <span>Fragments counted</span>
+            <strong id="fragmentCountValue">0</strong>
+          </div>
+        </div>
+      </aside>
+
+      <main class="workspace">
+        <div class="canvas-toolbar">
+          <button id="processBtn" type="button">Update preview</button>
+          <button id="rerunAnalysisBtn" type="button" class="secondary">Recount</button>
+          <span id="statusText" class="status-text">Waiting for image</span>
+        </div>
+
+        <div class="canvas-grid">
+          <div class="canvas-card">
+            <h3>Source + ROI</h3>
+            <canvas id="imageCanvas" width="900" height="700"></canvas>
+          </div>
+          <div class="canvas-card">
+            <h3>Preprocessed preview</h3>
+            <canvas id="previewCanvas" width="900" height="700"></canvas>
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <script src="./vendor/opencv.js"></script>
+    <script src="./app.js"></script>
+  </body>
+</html>
